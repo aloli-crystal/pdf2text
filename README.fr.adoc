@@ -1,8 +1,40 @@
-= aloli-crystal/pdf2text
+= aloli-crystal/pdf2text — extracteur de texte PDF pur Crystal
 :toc: left
 :toc-title: Sommaire
+:source-highlighter: rouge
 
-Outil daudit visuel pour PDFs : extraction bbox, diff de baselines, détection danomalies typographiques, annotation des résultats.
+Bibliothèque et CLI Crystal pour lire un PDF, parcourir son arbre
+d'objets et extraire le texte avec ses positions (page, police,
+boîte englobante). Aucune dépendance externe — uniquement la
+stdlib Crystal.
+
+== État courant (v0.3.0)
+
+* Lecture du header PDF + indexation bytes-safe des objets
+* Walking du `/Catalog` → `/Pages` tree + dimensions `/MediaBox`
+* Décompression FlateDecode + auto-détection par signature zlib
+* Parsing du ToUnicode CMap (`beginbfchar` + `beginbfrange`)
+* Décodage des strings HEX `<002500480055>` en Unicode via CID map
+* Bbox précises via parsing `/W` (per-CID widths) + `/DW`
+
+== Comparatif vs pdftotext (poppler)
+
+Sur 6 PDFs aloli-crystal/pdf variés, pdf2text extrait
+**systématiquement plus de mots** que pdftotext :
+
+[%autowidth]
+|===
+| PDF | pdf2text | pdftotext | Δ
+| `beryl` | 2681 | 2587 | +94
+| `crystal-asciidoctor-pdf` | 5193 | 4997 | +196
+| `crystal-combine-pdf` | 5756 | 5296 | +460
+| `toml` | 3085 | 2899 | +186
+| `noto-cjk` | 1573 | 1484 | +89
+| `deploy` | 3803 | 3579 | +224
+|===
+
+Validation bbox sur « Beryl » du README beryl : pdf2text et
+pdftotext renvoient x=36.0 w=82.0 — **identique au 1/100ᵉ près**.
 
 == Installation
 
@@ -11,46 +43,70 @@ Outil daudit visuel pour PDFs : extraction bbox, diff de baselines, détection d
 dependencies:
   pdf2text:
     github: aloli-crystal/pdf2text
-    version: "~> 0.1"
+    version: "~> 0.3"
 ----
 
-== Démarrage rapide
+== Utilisation programmatique
 
 [source,crystal]
 ----
 require "pdf2text"
 
-# … exemple à compléter …
+extract = Pdf2Text::Extractor.extract("doc.pdf")
+puts "Pages : #{extract.pages.size}"
+extract.pages.each do |page|
+  page.words.each do |w|
+    puts "  #{w.text} @ (#{w.bbox.x_min}, #{w.bbox.y_min}) " \
+         "size=#{w.font_size} font=#{w.font_name}"
+  end
+end
 ----
 
-== Statut
+== Utilisation CLI
 
-* *Version* : voir https://github.com/aloli-crystal/pdf2text/releases[releases GitHub]
-* *Branche par défaut* : `production`
-* *Licence* : MIT (voir `LICENSE`)
+[source,bash]
+----
+pdf2text doc.pdf              # résumé textuel
+pdf2text doc.pdf --json       # JSON structuré
+pdf2text doc.pdf --pages      # nombre de pages
+pdf2text --version
+pdf2text help
+----
 
-== Documentation
+== Roadmap
 
-* https://aloli-crystal.github.io/pdf2text/[Site documentaire Antora] (à venir)
-* `CHANGELOG.fr.adoc` — historique des versions
-* `CHANGELOG.adoc` — version anglaise
+[%autowidth]
+|===
+| Version | Cible | Statut
 
-== Conventions ALOLI
+| `0.1.0-alpha` | Bootstrap : structure pages + dimensions | ✓ Livré
+| `0.2.0` | Extraction texte via ToUnicode CMap | ✓ Livré
+| `0.3.0` | Bbox précises via parsing `/W` | ✓ Livré
+| `0.4.0` | Décodage WinAnsi pour fontes Type1 standard | À venir
+| `0.5.0` | Suivi matrice de transformation graphique (CTM) | À venir
+| `0.6.0` | Parsing complet xref + object streams | À venir
+| `1.0.0` | À définir quand API stable et battle-tested | Différée
+|===
 
-Ce shard suit les conventions de l'écosystème
-https://github.com/aloli-crystal[aloli-crystal/*] :
+Pas de v1.0 prématurée — on accumule les versions 0.x tant que
+des évolutions de surface sont en cours. La maturité se mesure
+à l'usage réel (CI active sur plusieurs projets, retours
+intégrés, pas de breaking change sur 6 mois).
 
-* Constante `VERSION` lue au compile-time depuis `shard.yml` —
-  pas de désynchro possible.
-* CLI : `pdf2text help [<sub>]` (équivalent UX standard de
-  `--help` + focus par sous-commande).
-* Branche par défaut `production` (pas `main`).
-* Versioning SemVer 3-chiffres pour création, 4-chiffres pour
-  portage de gem Ruby.
+== Pourquoi ne PAS dépendre de pdftotext ?
 
-Pour démarrer un nouveau shard avec ces conventions :
-https://github.com/aloli-crystal/shard-template[aloli-crystal/shard-template].
+`pdftotext` (poppler-utils) marche très bien mais demande une
+installation système non triviale (Docker minimal, CI Alpine,
+sandbox). `pdf2text` reste utilisable __en complément__ — il
+vise à fournir une alternative __native Crystal__ pour les
+projets qui veulent éviter cette dépendance externe.
+
+== Convention de versioning ALOLI
+
+`pdf2text` est une **création originale** (pas un portage),
+donc **3 chiffres SemVer classique**. Cf.
+`feedback_versioning_shards.md` (mémoire ALOLI).
 
 == Licence
 
-MIT — voir `LICENSE`.
+MIT. © 2026 ALOLI.
