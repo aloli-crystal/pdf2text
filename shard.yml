@@ -1,5 +1,5 @@
 name: pdf2text
-version: 0.1.0
+version: 0.2.0
 
 description: |
   Pure-Crystal PDF text extractor. Reads a PDF file, walks its

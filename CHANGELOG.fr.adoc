@@ -1,3 +1,68 @@
+== v0.2.0 — 2026-06-04
+
+=== Ajouté
+
+* **Extraction texte fonctionnelle via ToUnicode CMap.** Le
+  parser PDF natif décode désormais les fontes CIDFont Type0
+  avec encoding Identity-H — soit la quasi-totalité des PDFs
+  produits par `aloli-crystal/pdf`. Pour chaque font, on parse
+  son dictionnaire `/ToUnicode`, on récupère le CMap stream
+  (FlateDecode décompressé), et on construit une table CID
+  16-bit → texte Unicode. Lors du parsing du content stream,
+  les strings HEX `<002500480055>` sont décodées en CIDs puis
+  mappées en Unicode.
++
+  Test comparatif sur 5 PDFs de la baseline crystal-asciidoctor-pdf
+  (beryl, crystal-combine-pdf, toml, noto-cjk, deploy) : `pdf2text`
+  extrait systématiquement **plus de mots** que `pdftotext`
+  (référence poppler) — +196, +460, +186, +89, +224 mots
+  respectivement. La différence vient principalement du fait
+  qu'on splitte la ponctuation collante alors que pdftotext la
+  garde groupée — comportement préférable pour les outils
+  d'audit qui veulent compter les tokens.
+
+=== Corrigé
+
+* **`decode_stream` bytes-safe pour la détection FlateDecode.**
+  Avant : on convertissait l'object body en String UTF-8 et on
+  cherchait `/FlateDecode` via `String#includes?`. Pour les
+  objets avec dict contenant des bytes binaires (cas des fonts
+  embarquées et des CMaps), la conversion perdait l'info et le
+  marqueur n'était pas détecté → décompression skipée, contenu
+  binaire renvoyé tel quel, parser CMap voit du noise. Le check
+  est désormais fait sur les bytes bruts via `find_pattern`,
+  avec en plus une détection par **signature zlib** (`78 01`,
+  `78 9C`, `78 DA`) qui rattrape les cas où le filter n'est pas
+  formaté `/FlateDecode` standard.
++
+  Impact : sur le PDF beryl, le nombre de CIDs extraits par
+  fonte passe de 0 (échec silencieux) à 61 (DejaVuSans-Bold) /
+  84 (DejaVuSans) / 72 (DejaVuSansMono).
+
+* **Nom de fonte propre.** Avant : le regex `/BaseFont \/(\S+)`
+  capturait trop largement et le `font_name` retourné
+  contenait `/Encoding` du champ suivant (ex.
+  `QPQBSE+DejaVuSans-Bold/Encoding`). Le pattern devient
+  `/([^\/\s>]+)/` — borné par `/`, espace, ou `>`. Résultat :
+  `QPQBSE+DejaVuSans-Bold`.
+
+* **`parse_to_unicode_cmap` tolère les bytes non-UTF8.**
+  Filtrage des bytes non-printables vers espace avant le scan
+  regex PCRE2 (qui rejette UTF-8 invalide). Aucune perte
+  d'information utile : le contenu syntaxique du CMap est
+  ASCII pur.
+
+* **Tokenizer de TJ array gère les strings hex.** Avant : le
+  parseur du tableau TJ ne reconnaissait que les strings
+  parenthésées `(text)`. Pour les CIDFont qui émettent
+  `[<00010002> -50 <00030004>]`, on perdait tout. Extension à
+  `<hex>` en plus de `(text)`.
+
+* **`decode_string` polymorphe.** Le décodeur de string PDF
+  reconnaît désormais les deux formes (`(literal)` et `<hex>`)
+  et reçoit la `FontInfo` courante pour appliquer le CID map
+  approprié sur les strings hex.
+
 = Changelog
 :toc: left
 :toc-title: Versions

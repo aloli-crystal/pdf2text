@@ -209,20 +209,37 @@ module Pdf2Text
     # and pass the bytes through zlib.
     # ------------------------------------------------------------
 
+    # Décode un object body (dict + stream binaire) en chaîne
+    # texte. Bytes-safe : on cherche les markers via scan
+    # d'octets, sans passer par `String.new` qui peut planter
+    # PCRE2 si l'objet contient des bytes non-UTF8.
+    #
+    # Détecte automatiquement la compression FlateDecode soit
+    # via la présence du token `/FlateDecode` dans le dict, soit
+    # via la signature zlib `78 9C` / `78 DA` en tête du stream
+    # (utile quand le dict utilise une notation alternative).
     private def decode_stream(obj_body : Bytes) : String
-      s = String.new(obj_body)
-      start = s.index("stream")
-      finish = s.index("endstream")
+      stream_pat = "stream".to_slice
+      endstream_pat = "endstream".to_slice
+      start = find_pattern(obj_body, stream_pat, 0)
+      finish = start ? find_pattern(obj_body, endstream_pat, start) : nil
       return "" unless start && finish
-      # Skip "stream\n" or "stream\r\n"
-      data_start = start + "stream".size
-      while data_start < s.size && (s[data_start] == '\n' || s[data_start] == '\r')
+
+      data_start = start + stream_pat.size
+      while data_start < obj_body.size && (obj_body[data_start] == '\n'.ord || obj_body[data_start] == '\r'.ord)
         data_start += 1
       end
       raw = obj_body[data_start, finish - data_start - 1]?
       return "" unless raw
 
-      if s.includes?("/FlateDecode")
+      # Détecte FlateDecode :
+      # 1. Par le dict `/FlateDecode` (recherche bytes-safe)
+      # 2. Par la signature zlib `78 ??` (78 01, 78 9C, 78 DA)
+      dict_part = obj_body[0, start]
+      has_flate = find_pattern(dict_part, "/FlateDecode".to_slice, 0) != nil
+      zlib_sig = raw.size >= 2 && raw[0] == 0x78_u8 && (raw[1] == 0x01_u8 || raw[1] == 0x9C_u8 || raw[1] == 0xDA_u8)
+
+      if has_flate || zlib_sig
         begin
           io = IO::Memory.new(raw)
           zlib = Compress::Zlib::Reader.new(io)
@@ -243,10 +260,21 @@ module Pdf2Text
     # bookkeeping and an approximate width estimation.
     # ------------------------------------------------------------
 
-    private record FontInfo,
-      key : String,
-      name : String,
-      avg_advance : Float64 # average glyph advance in unscaled units
+    # Information extraite d'un dictionnaire de fonte. La `cid_map`
+    # (CID 16-bit → chaîne Unicode) est construite à partir du
+    # `/ToUnicode` CMap quand disponible — c'est ce qui permet de
+    # décoder les strings HEX `<002500480055>` des content streams
+    # CIDFont en texte lisible.
+    private class FontInfo
+      property key : String
+      property name : String
+      property avg_advance : Float64
+      property cid_map : Hash(UInt16, String)
+      property byte_width : Int32 # 1 (simple) ou 2 (CID)
+
+      def initialize(@key, @name, @avg_advance, @cid_map, @byte_width)
+      end
+    end
 
     private def build_font_map(objects : ObjectMap, page_s : String) : Hash(String, FontInfo)
       result = Hash(String, FontInfo).new
@@ -254,7 +282,6 @@ module Pdf2Text
       resources_s = if resources_ref && (r = objects[resources_ref]?)
                       String.new(r)
                     else
-                      # /Resources can also be an inline dict on the page
                       page_s
                     end
       fonts_section = if (m = resources_s.match(/\/Font\s*<<(.*?)>>/m))
@@ -267,17 +294,112 @@ module Pdf2Text
         font_ref = match[2].to_i
         if (font_obj = objects[font_ref]?)
           font_s = String.new(font_obj)
-          name = if (mn = font_s.match(/\/BaseFont\s*\/(\S+)/))
+          # `/BaseFont /XXX` : capturer jusqu'au prochain `/`, `>`,
+          # ou espace (le `\S+` était trop gourmand et incluait
+          # `/Encoding` du dict suivant).
+          name = if (mn = font_s.match(/\/BaseFont\s*\/([^\/\s>]+)/))
                    mn[1]
                  else
                    "unknown"
                  end
-          # Crude advance estimate : we'll use 500 units (= half em)
-          # which is roughly right for sans fonts at 1000-unit space.
-          result[key] = FontInfo.new(key: key, name: name, avg_advance: 500.0)
+          # Détection CID font : subtype Type0 ou CIDFontType0/2
+          # ⇒ strings dans le content stream sont en hex 2-byte par
+          # caractère. Sinon (Type1, TrueType simple) : 1-byte.
+          byte_width = (font_s.includes?("/Type0") || font_s.includes?("/CIDFontType")) ? 2 : 1
+          # ToUnicode CMap : optionnel. Quand présent, on l'utilise
+          # pour décoder les CIDs en texte Unicode.
+          cid_map = Hash(UInt16, String).new
+          if (to_uni_ref = extract_ref(font_s, "/ToUnicode")) && (to_uni_obj = objects[to_uni_ref]?)
+            cmap_stream = decode_stream(to_uni_obj)
+            cid_map = parse_to_unicode_cmap(cmap_stream)
+          end
+          result[key] = FontInfo.new(
+            key: key,
+            name: name,
+            avg_advance: 500.0,
+            cid_map: cid_map,
+            byte_width: byte_width,
+          )
         end
       end
       result
+    end
+
+    # Parse un `/ToUnicode` CMap (format Adobe Identity-UCS). Gère
+    # `beginbfchar`/`endbfchar` (couples individuels) et
+    # `beginbfrange`/`endbfrange` (ranges). Retourne une map
+    # CID 16-bit → texte Unicode (string Crystal natif).
+    private def parse_to_unicode_cmap(cmap : String) : Hash(UInt16, String)
+      result = Hash(UInt16, String).new
+      # PCRE2 rejette les bytes UTF-8 invalides. Les CMaps peuvent
+      # contenir du binaire — on filtre pour ne garder que l'ASCII
+      # printable et les whitespaces avant scan, sans perte
+      # d'information utile (le CMap est syntaxiquement ASCII).
+      safe = String.build do |io|
+        cmap.each_byte do |b|
+          if (b >= 0x20 && b < 0x7F) || b == 0x0A || b == 0x0D || b == 0x09
+            io.write_byte(b)
+          else
+            io.write_byte(' '.ord.to_u8)
+          end
+        end
+      end
+
+      safe.scan(/beginbfchar(.*?)endbfchar/m) do |m|
+        body = m[1]
+        body.scan(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/) do |pair|
+          cid = pair[1].to_u16(16)
+          uni = decode_hex_to_string(pair[2])
+          result[cid] = uni
+        end
+      end
+
+      safe.scan(/beginbfrange(.*?)endbfrange/m) do |m|
+        body = m[1]
+        body.scan(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/) do |triple|
+          start_cid = triple[1].to_u16(16)
+          end_cid = triple[2].to_u16(16)
+          start_uni = triple[3].to_i(16)
+          (start_cid..end_cid).each_with_index do |cid, i|
+            result[cid] = (start_uni + i).chr.to_s
+          end
+        end
+        body.scan(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*\[\s*((?:<[0-9A-Fa-f]+>\s*)+)\]/) do |arr|
+          start_cid = arr[1].to_u16(16)
+          unis = [] of String
+          arr[3].scan(/<([0-9A-Fa-f]+)>/) { |um| unis << decode_hex_to_string(um[1]) }
+          unis.each_with_index do |uni, i|
+            result[start_cid + i] = uni
+          end
+        end
+      end
+
+      result
+    end
+
+    # Décode une chaîne hex (`004C0065`) en texte Unicode. Chaque
+    # paire de 4 hex digits = 1 codepoint BMP. Pour les caractères
+    # hors BMP, le PDF utilise des paires de surrogates UTF-16 que
+    # nous combinons.
+    private def decode_hex_to_string(hex : String) : String
+      String.build do |io|
+        i = 0
+        while i + 4 <= hex.size
+          cp = hex[i, 4].to_i(16)
+          if cp >= 0xD800 && cp <= 0xDBFF && i + 8 <= hex.size
+            # High surrogate, lire la low surrogate suivante
+            low = hex[i + 4, 4].to_i(16)
+            if low >= 0xDC00 && low <= 0xDFFF
+              full = 0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00)
+              io << full.chr
+              i += 8
+              next
+            end
+          end
+          io << cp.chr
+          i += 4
+        end
+      end
     end
 
     # ------------------------------------------------------------
@@ -352,31 +474,32 @@ module Pdf2Text
           ty = tlm_y
           operands.clear
         when "Tj"
-          # operand : (text)
+          # operand : (text) or <hex>
           if (str = operands.last?) && in_text
-            text = decode_string(str)
+            current_font = fonts[font_key]?
+            text = decode_string(str, current_font)
             unless text.empty?
-              w = estimate_width(text, font_size, fonts[font_key]?)
-              words.concat split_into_words(text, tx, ty, font_size, w, page_num, fonts[font_key]?.try(&.name) || "?")
+              w = estimate_width(text, font_size, current_font)
+              words.concat split_into_words(text, tx, ty, font_size, w, page_num, current_font.try(&.name) || "?")
               tx += w
             end
           end
           operands.clear
         when "TJ"
-          # operand : [ (text) num (text) num ... ]
+          # operand : [ (text) num (text) num ... ] or [ <hex> num ... ]
           if (arr = operands.last?) && in_text
+            current_font = fonts[font_key]?
             elts = parse_tj_array(arr)
             elts.each do |elt|
               case elt
               when String
-                text = decode_string(elt)
+                text = decode_string(elt, current_font)
                 unless text.empty?
-                  w = estimate_width(text, font_size, fonts[font_key]?)
-                  words.concat split_into_words(text, tx, ty, font_size, w, page_num, fonts[font_key]?.try(&.name) || "?")
+                  w = estimate_width(text, font_size, current_font)
+                  words.concat split_into_words(text, tx, ty, font_size, w, page_num, current_font.try(&.name) || "?")
                   tx += w
                 end
               when Float64
-                # Negative number = advance to the right by -elt * font_size / 1000
                 tx += -elt * font_size / 1000.0
               end
             end
@@ -474,8 +597,63 @@ module Pdf2Text
 
     # Decode a PDF literal string `(abc\nde)` into a Crystal String.
     # v0.1.0 keeps things in WinAnsi-ish : we map most chars as-is.
-    private def decode_string(s : String) : String
-      return "" unless s.starts_with?('(') && s.ends_with?(')')
+    # Décode une string PDF en texte Unicode. Reconnaît :
+    #   - String parenthésée `(abc\ndef)` (escape octal + backslash)
+    #   - String hex `<00450046>` (chaque paire de hex = 1 byte ; si
+    #     `font.byte_width == 2`, chaque CID = 2 bytes, lookup dans
+    #     `font.cid_map` ; si byte_width == 1, on prend juste le byte
+    #     comme codepoint Latin-1).
+    private def decode_string(s : String, font : FontInfo? = nil) : String
+      if s.starts_with?('<') && s.ends_with?('>')
+        decode_hex_string(s, font)
+      elsif s.starts_with?('(') && s.ends_with?(')')
+        decode_paren_string(s)
+      else
+        ""
+      end
+    end
+
+    private def decode_hex_string(s : String, font : FontInfo?) : String
+      hex = s[1..-2].gsub(/\s+/, "")
+      # Pad if odd
+      hex += "0" if hex.size.odd?
+      bytes = [] of UInt8
+      i = 0
+      while i + 2 <= hex.size
+        bytes << hex[i, 2].to_u8(16)
+        i += 2
+      end
+
+      byte_width = font.try(&.byte_width) || 1
+      cid_map = font.try(&.cid_map)
+
+      String.build do |io|
+        idx = 0
+        while idx < bytes.size
+          if byte_width == 2 && idx + 1 < bytes.size
+            cid = (bytes[idx].to_u16 << 8) | bytes[idx + 1].to_u16
+            if cid_map && (uni = cid_map[cid]?)
+              io << uni
+            else
+              # Fallback : si pas de CMap, on émet le CID brut comme
+              # Latin-1 (rarement correct mais limite la perte d'info).
+              io << cid.chr if cid < 0x10000
+            end
+            idx += 2
+          else
+            byte = bytes[idx]
+            if cid_map && (uni = cid_map[byte.to_u16]?)
+              io << uni
+            else
+              io << byte.chr
+            end
+            idx += 1
+          end
+        end
+      end
+    end
+
+    private def decode_paren_string(s : String) : String
       body = s[1..-2]
       String.build do |io|
         i = 0
@@ -484,16 +662,15 @@ module Pdf2Text
           if c == '\\' && i + 1 < body.size
             nc = body[i + 1]
             case nc
-            when 'n' then io << '\n'; i += 2
-            when 'r' then io << '\r'; i += 2
-            when 't' then io << '\t'; i += 2
-            when 'b' then io << '\b'; i += 2
-            when 'f' then io << '\f'; i += 2
-            when '(' then io << '('; i += 2
-            when ')' then io << ')'; i += 2
+            when 'n'  then io << '\n'; i += 2
+            when 'r'  then io << '\r'; i += 2
+            when 't'  then io << '\t'; i += 2
+            when 'b'  then io << '\b'; i += 2
+            when 'f'  then io << '\f'; i += 2
+            when '('  then io << '('; i += 2
+            when ')'  then io << ')'; i += 2
             when '\\' then io << '\\'; i += 2
             when '0'..'7'
-              # Octal escape \nnn
               j = i + 1
               val = 0
               while j < body.size && j < i + 4 && body[j].in?('0'..'7')
@@ -514,6 +691,8 @@ module Pdf2Text
     end
 
     # Parse a TJ array's content (between `[` and `]`).
+    # Supporte les strings parenthésées `(abc)` ET hex `<00450046>`,
+    # ainsi que les nombres de positionnement.
     private def parse_tj_array(arr : String) : Array(String | Float64)
       result = [] of String | Float64
       return result unless arr.starts_with?('[') && arr.ends_with?(']')
@@ -539,9 +718,17 @@ module Pdf2Text
             i += 1
           end
           result << body[start...i]
+        when '<'
+          start = i
+          i += 1
+          while i < body.size && body[i] != '>'
+            i += 1
+          end
+          i += 1 if i < body.size
+          result << body[start...i]
         else
           start = i
-          while i < body.size && ![' ', '\n', '\r', '\t', '('].includes?(body[i])
+          while i < body.size && ![' ', '\n', '\r', '\t', '(', '<'].includes?(body[i])
             i += 1
           end
           tok = body[start...i]
