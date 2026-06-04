@@ -287,21 +287,45 @@ module Pdf2Text
       # Largeur d'une chaîne Unicode dans cette fonte, en unités
       # texte (1/1000 em). Multiplier par font_size puis diviser
       # par 1000 pour obtenir la largeur en points PDF.
+      #
+      # Stratégie de fallback (v0.4.0) :
+      # - Si le CID est dans `cid_widths` (parsé depuis /W) : valeur exacte.
+      # - Sinon : utilise `effective_default_width` qui est la
+      #   MÉDIANE des widths connues. Plus représentatif qu'un
+      #   `default_width=1000` brut (= largeur d'un caractère
+      #   très large alors que la médiane d'une fonte sans est
+      #   typiquement ~500). Évite que les chars rares comme
+      #   `→`, `…`, certaines ponctuations finales (non listés
+      #   dans /W) ne soient mesurés 2× trop larges.
       def width_of(text : String) : Float64
         if cid_widths.empty?
-          # Fallback : moyenne approximative pour les fontes
-          # simples sans /W parsé.
           text.size * avg_advance
         else
-          # Reverse-lookup via cid_map : pour chaque char Unicode,
-          # trouver son CID et sa width.
-          # Construit un cache inverse à la première utilisation.
           @uni_to_cid ||= build_uni_to_cid
+          fallback = effective_default_width
           text.chars.sum(0.0) do |c|
             cid = @uni_to_cid.not_nil![c.to_s]?
-            cid ? (cid_widths[cid]? || default_width) : default_width
+            cid ? (cid_widths[cid]? || fallback) : fallback
           end
         end
+      end
+
+      # Largeur de fallback effective : médiane des widths
+      # connues. Calculée une fois et mise en cache.
+      @effective_default_width : Float64?
+
+      def effective_default_width : Float64
+        @effective_default_width ||= compute_effective_default
+      end
+
+      private def compute_effective_default : Float64
+        return default_width if cid_widths.empty?
+        sorted = cid_widths.values.sort!
+        median = sorted[sorted.size // 2]
+        # On retient le MIN entre la médiane et la
+        # default_width déclarée par /DW. Évite qu'un /DW
+        # surdimensionné (rare mais arrive) ne fausse les bbox.
+        {median, default_width}.min
       end
 
       @uni_to_cid : Hash(String, UInt16)?

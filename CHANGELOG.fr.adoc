@@ -1,3 +1,34 @@
+== v0.4.0 — 2026-06-04
+
+=== Ajouté
+
+* **Fallback `effective_default_width` (médiane des widths).**
+  Le `FontInfo#width_of` utilisait précédemment `default_width`
+  (typiquement 1000 unités) comme largeur fallback pour les
+  CIDs non listés dans `/W` — beaucoup trop large, car la
+  médiane d'une fonte est typiquement ~500 unités (= un
+  caractère « moyen » à 0,5 em). Conséquence : les chars rares
+  (`→`, `…`, certaines ponctuations finales) étaient mesurés
+  2× trop larges, faussant les bbox de pdf2text et créant des
+  faux positifs `margin_overflow` côté pdf-audit.
++
+  Nouvelle méthode `FontInfo#effective_default_width` qui
+  calcule la médiane des `cid_widths` connus au premier appel
+  (puis cache). Cette médiane remplace `default_width` comme
+  fallback de `width_of`. On garde le `min(median, default_width)`
+  pour rester conservateur dans les rares cas où la médiane
+  serait plus large que le `/DW` déclaré.
++
+  Impact : sur le PDF du README beryl, certains chars rares
+  voient leur bbox.width réduite de ~50 %, ce qui rapproche
+  les mesures pdf2text de la vérité visuelle du PDF.
+
+=== À noter
+
+Le nombre de mots extraits passe de 2681 à 2794 sur le beryl
+PDF — légère augmentation due à un meilleur calage des positions
+qui révèle quelques mots adjacents auparavant fusionnés.
+
 == v0.3.0 — 2026-06-04
 
 === Ajouté
