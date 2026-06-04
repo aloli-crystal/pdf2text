@@ -1,3 +1,54 @@
+== v0.3.0 — 2026-06-04
+
+=== Ajouté
+
+* **Bbox précises via parsing du tableau `/W` (CIDFont widths).**
+  Le `FontInfo` stocke désormais :
++
+  - `cid_widths : Hash(UInt16, Float64)` — largeur par CID en
+    unités texte (1/1000 em), parsée depuis le `/W` du
+    `DescendantFont` du Type0.
+  - `default_width : Float64` — `/DW` (défaut 1000 = 0.5 em),
+    fallback pour les CIDs absents de `cid_widths`.
++
+  Le parser `/W` supporte les deux formats Adobe :
++
+  0. `CID [w1 w2 w3 ...]` : assignation aux CIDs consécutifs
+     depuis `CID`.
+  0. `CID_first CID_last w` : assignation uniforme à toute la
+     range.
++
+  La largeur d'un texte est désormais calculée glyphe par glyphe
+  via `FontInfo#width_of` : pour chaque caractère, on cherche son
+  CID (via reverse-lookup du `cid_map`) puis sa largeur dans
+  `cid_widths`. Plus de moyenne `avg_advance` approximative.
++
+  Vérification sur le README beryl (DejaVu Sans Bold/Sans/SansMono) :
++
+  [%autowidth]
+  |===
+  | Mot | pdf2text x | pdf2text w | pdftotext x | pdftotext w
+  
+  | `Beryl`    | 36.0  | **82.0** | 36.0  | **82.0** ← identique
+  | `Table`    | 36.0  | 41.8     | 36.0  | 43.3 ← Δ 1.5 pt
+  | `matières` | 119.7 | 67.0     | 116.9 | 69.7 ← Δ 2.8 pt
+  |===
++
+  Les bbox sont maintenant exploitables par les outils d'audit
+  pour détecter :
++
+  - mots débordant la marge droite (`x_max > target_x`)
+  - mots collés (gap entre xmax du précédent et xmin du suivant
+    inférieur à un seuil)
+  - lignes très étalées (somme des gaps > seuil)
+  - asymétries de marges
++
+  Les différences résiduelles vs pdftotext (~1-3 pt par mot)
+  viennent du fait que notre cursor avance caractère par caractère
+  avec les widths /W, alors que pdftotext peut utiliser les
+  bounding boxes glyphe-par-glyphe issues directement du programme
+  de fonte TrueType. Suffisant pour l'audit visuel.
+
 == v0.2.0 — 2026-06-04
 
 === Ajouté

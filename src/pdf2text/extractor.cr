@@ -265,14 +265,51 @@ module Pdf2Text
     # `/ToUnicode` CMap quand disponible — c'est ce qui permet de
     # décoder les strings HEX `<002500480055>` des content streams
     # CIDFont en texte lisible.
+    #
+    # `cid_widths` (v0.3.0) : largeur en unités texte (1/1000 em)
+    # par CID, parsée depuis `/W` du DescendantFont du Type0.
+    # `default_width` : `/DW` (défaut 1000) — largeur fallback
+    # pour les CIDs absents de `cid_widths`.
     private class FontInfo
       property key : String
       property name : String
       property avg_advance : Float64
       property cid_map : Hash(UInt16, String)
       property byte_width : Int32 # 1 (simple) ou 2 (CID)
+      property cid_widths : Hash(UInt16, Float64)
+      property default_width : Float64
 
-      def initialize(@key, @name, @avg_advance, @cid_map, @byte_width)
+      def initialize(@key, @name, @avg_advance, @cid_map, @byte_width,
+                     @cid_widths = Hash(UInt16, Float64).new,
+                     @default_width = 1000.0)
+      end
+
+      # Largeur d'une chaîne Unicode dans cette fonte, en unités
+      # texte (1/1000 em). Multiplier par font_size puis diviser
+      # par 1000 pour obtenir la largeur en points PDF.
+      def width_of(text : String) : Float64
+        if cid_widths.empty?
+          # Fallback : moyenne approximative pour les fontes
+          # simples sans /W parsé.
+          text.size * avg_advance
+        else
+          # Reverse-lookup via cid_map : pour chaque char Unicode,
+          # trouver son CID et sa width.
+          # Construit un cache inverse à la première utilisation.
+          @uni_to_cid ||= build_uni_to_cid
+          text.chars.sum(0.0) do |c|
+            cid = @uni_to_cid.not_nil![c.to_s]?
+            cid ? (cid_widths[cid]? || default_width) : default_width
+          end
+        end
+      end
+
+      @uni_to_cid : Hash(String, UInt16)?
+
+      private def build_uni_to_cid : Hash(String, UInt16)
+        h = Hash(String, UInt16).new
+        cid_map.each { |cid, uni| h[uni] = cid }
+        h
       end
     end
 
@@ -313,13 +350,130 @@ module Pdf2Text
             cmap_stream = decode_stream(to_uni_obj)
             cid_map = parse_to_unicode_cmap(cmap_stream)
           end
+          # /W : per-CID widths du DescendantFont (Type0 -> CIDFont)
+          cid_widths = Hash(UInt16, Float64).new
+          default_width = 1000.0
+          descendant_refs = extract_array_refs(font_s, "/DescendantFonts")
+          if (desc_ref = descendant_refs.first?) && (desc_obj = objects[desc_ref]?)
+            desc_s = String.new(desc_obj)
+            if (mdw = desc_s.match(/\/DW\s+([\d.]+)/))
+              default_width = mdw[1].to_f
+            end
+            cid_widths = parse_cid_widths(desc_s)
+          end
           result[key] = FontInfo.new(
             key: key,
             name: name,
             avg_advance: 500.0,
             cid_map: cid_map,
             byte_width: byte_width,
+            cid_widths: cid_widths,
+            default_width: default_width,
           )
+        end
+      end
+      result
+    end
+
+    # Parse le tableau `/W` d'un DescendantFont CIDFont (Type0).
+    # Format : alternance de `CID [w1 w2 ...]` (assignation aux
+    # CIDs consécutifs depuis CID) ET `CID_first CID_last w`
+    # (assignation uniforme à toute la range). v0.3.0 supporte
+    # les deux formes.
+    private def parse_cid_widths(desc_s : String) : Hash(UInt16, Float64)
+      result = Hash(UInt16, Float64).new
+      # Le `/W [...]` peut être très long, on capture jusqu'au `]`
+      # de plus haut niveau via comptage de profondeur manuel.
+      idx = desc_s.index("/W")
+      return result unless idx
+      # Skip whitespace puis trouver le `[`
+      i = idx + 2
+      while i < desc_s.size && desc_s[i] != '['
+        return result if desc_s[i] != ' ' && desc_s[i] != '\n' && desc_s[i] != '\r' && desc_s[i] != '\t'
+        i += 1
+      end
+      return result unless i < desc_s.size
+      start = i + 1
+      depth = 1
+      i += 1
+      while i < desc_s.size && depth > 0
+        depth += 1 if desc_s[i] == '['
+        depth -= 1 if desc_s[i] == ']'
+        i += 1
+      end
+      body = desc_s[start..(i - 2)]
+
+      tokens = tokenize_w_array(body)
+      j = 0
+      while j < tokens.size
+        tok = tokens[j]
+        case tok
+        when Float64
+          cid_start = tok.to_u16
+          if j + 1 < tokens.size
+            nxt = tokens[j + 1]
+            case nxt
+            when Array(Float64)
+              # Forme 1 : `cid [w1 w2 ...]`
+              nxt.each_with_index do |w, k|
+                result[(cid_start + k).to_u16] = w
+              end
+              j += 2
+            when Float64
+              if j + 2 < tokens.size && (third = tokens[j + 2]).is_a?(Float64)
+                # Forme 2 : `cid_first cid_last w`
+                cid_end = nxt.to_u16
+                w = third
+                (cid_start..cid_end).each { |c| result[c] = w }
+                j += 3
+              else
+                j += 1
+              end
+            else
+              j += 1
+            end
+          else
+            j += 1
+          end
+        else
+          j += 1
+        end
+      end
+      result
+    end
+
+    # Tokenizer pour le contenu de `/W [...]` : retourne une
+    # liste de `Float64` (CIDs ou widths) et `Array(Float64)`
+    # (les sous-tableaux `[w1 w2 ...]`).
+    private def tokenize_w_array(s : String) : Array(Float64 | Array(Float64))
+      result = [] of Float64 | Array(Float64)
+      i = 0
+      while i < s.size
+        c = s[i]
+        case c
+        when ' ', '\n', '\r', '\t'
+          i += 1
+        when '['
+          start = i + 1
+          depth = 1
+          i += 1
+          while i < s.size && depth > 0
+            depth += 1 if s[i] == '['
+            depth -= 1 if s[i] == ']'
+            i += 1
+          end
+          inner = s[start..(i - 2)]
+          arr = inner.split.compact_map(&.to_f?)
+          result << arr
+        else
+          start = i
+          while i < s.size && !{' ', '\n', '\r', '\t', '[', ']'}.includes?(s[i])
+            i += 1
+          end
+          tok = s[start...i]
+          if (val = tok.to_f?)
+            result << val
+          end
         end
       end
       result
@@ -740,12 +894,18 @@ module Pdf2Text
       result
     end
 
-    # Approximate the rendered width of a text in PDF points.
-    # Uses the font's `avg_advance` × char count × font_size / 1000
-    # (PDF convention : font units are 1/1000 of em).
+    # Rendered width of a text in PDF points. Uses the font's
+    # per-CID widths (parsed from `/W`) when available, falling
+    # back to `avg_advance` otherwise. PDF convention : font
+    # units are 1/1000 of em, so we divide by 1000 after scaling
+    # by font_size.
     private def estimate_width(text : String, font_size : Float64, font : FontInfo?) : Float64
-      advance = font.try(&.avg_advance) || 500.0
-      text.size * advance * font_size / 1000.0
+      if font && !font.cid_widths.empty?
+        font.width_of(text) * font_size / 1000.0
+      else
+        advance = font.try(&.avg_advance) || 500.0
+        text.size * advance * font_size / 1000.0
+      end
     end
 
     # Split a positioned text string into individual words by ASCII
