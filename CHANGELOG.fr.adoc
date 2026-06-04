@@ -1,3 +1,49 @@
+== v0.5.0 — 2026-06-04
+
+=== Corrigé / Ajouté
+
+* **Largeurs EXACTES par CID brut (fin des mesures faussées sur
+  certaines fontes).** La largeur d'un run de texte était calculée
+  par `FontInfo#width_of`, qui décode le texte en Unicode puis
+  re-mappe chaque caractère vers un CID via la table inverse de
+  `ToUnicode`. Ce détour est *lossy* : plusieurs CID peuvent
+  partager un même Unicode, et la valeur récupérée n'était pas
+  toujours celle du glyphe réellement tracé. Conséquence : des
+  mots mesurés jusqu'à ~25 % trop étroits, provoquant de faux
+  `huge_gap` dans pdf-audit.
++
+  Nouveau chemin : `decode_with_widths` décode la string PDF en
+  renvoyant À LA FOIS le texte ET la largeur de CHAQUE caractère,
+  mesurée directement depuis le CID brut du flux via
+  `FontInfo#cid_width(cid)` (lookup `/W` sans détour Unicode). Les
+  positions de mots correspondent désormais au pixel près à la
+  référence poppler (`pdftotext -bbox`).
+
+* **`split_into_words` : positions par vraie chasse de glyphe.**
+  La méthode répartissait `largeur_totale / nb_caractères`
+  uniformément — approximation grossière pour une fonte
+  proportionnelle. Elle s'appuie maintenant sur le tableau de
+  largeurs par caractère fourni par `decode_with_widths` : chaque
+  mot avance le curseur de la somme exacte des chasses de ses
+  glyphes.
+
+* **Parse `/W` robuste (bug du préfixe de sous-ensemble en « W »).**
+  `parse_cid_widths` localisait le tableau `/W` via
+  `desc_s.index("/W")`. Quand le préfixe aléatoire de sous-ensemble
+  de la fonte commençait par « W » (ex. `WSMHES+DejaVuSans-Bold`),
+  ce `/W…` matchait le `/BaseFont` au lieu du tableau de largeurs ⇒
+  `cid_widths` vide ⇒ largeurs estimées au lieu d'exactes. La
+  recherche exige désormais que `/W` soit suivi (après espaces)
+  d'un `[`, en itérant les occurrences pour ignorer `/WSMHES…`,
+  `/WMode`, etc. (Cas vécu : la fonte grasse du README beryl FR.)
+
+=== Impact
+
+Sur les PDFs du README beryl (gén. crystal-asciidoctor-pdf), les
+bbox des mots — y compris en gras et avec diacritiques (é, è) —
+coïncident désormais avec poppler. Les faux positifs `huge_gap`
+de pdf-audit dus à la sous-mesure du gras disparaissent.
+
 == v0.4.0 — 2026-06-04
 
 === Ajouté

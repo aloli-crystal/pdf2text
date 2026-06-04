@@ -310,6 +310,18 @@ module Pdf2Text
         end
       end
 
+      # Largeur d'un CID BRUT (tel qu'il apparaît dans le flux de
+      # contenu, avant tout décodage Unicode), en unités 1000-em.
+      # C'est la mesure EXACTE : on interroge `/W` directement avec
+      # le CID, sans passer par la table Unicode→CID inverse (qui
+      # est lossy — plusieurs CID peuvent partager un même Unicode,
+      # typiquement les variantes de chasse d'une fonte grasse).
+      # Fallback médian pour les CID absents de `/W`.
+      def cid_width(cid : UInt16) : Float64
+        return avg_advance if cid_widths.empty?
+        cid_widths[cid]? || effective_default_width
+      end
+
       # Largeur de fallback effective : médiane des widths
       # connues. Calculée une fois et mise en cache.
       @effective_default_width : Float64?
@@ -406,17 +418,34 @@ module Pdf2Text
     # les deux formes.
     private def parse_cid_widths(desc_s : String) : Hash(UInt16, Float64)
       result = Hash(UInt16, Float64).new
-      # Le `/W [...]` peut être très long, on capture jusqu'au `]`
-      # de plus haut niveau via comptage de profondeur manuel.
-      idx = desc_s.index("/W")
-      return result unless idx
-      # Skip whitespace puis trouver le `[`
-      i = idx + 2
-      while i < desc_s.size && desc_s[i] != '['
-        return result if desc_s[i] != ' ' && desc_s[i] != '\n' && desc_s[i] != '\r' && desc_s[i] != '\t'
-        i += 1
+      # Recherche ROBUSTE du token `/W` (tableau des largeurs par
+      # CID, ensuite capturé jusqu'au `]` de plus haut niveau par
+      # comptage de profondeur). On exige que `/W` soit suivi —
+      # après d'éventuels espaces — d'un `[`, et on itère TOUTES
+      # les occurrences de `/W` pour ignorer les faux positifs :
+      #   - `/WSMHES+DejaVuSans-Bold` : le préfixe de sous-ensemble
+      #     de fonte (6 lettres aléatoires) peut commencer par « W ».
+      #     `desc_s.index("/W")` matchait alors le BaseFont au lieu
+      #     du tableau de largeurs ⇒ `cid_widths` vide ⇒ largeurs
+      #     estimées au lieu d'exactes (bug : les mots des fontes
+      #     dont le subset commençait par W étaient mal mesurés ;
+      #     ici la fonte grasse FR, préfixe « WSMHES ») ;
+      #   - `/WMode` (mode d'écriture vertical), le cas échéant.
+      bracket = -1
+      search = 0
+      while (pos = desc_s.index("/W", search))
+        j = pos + 2
+        while j < desc_s.size && (desc_s[j] == ' ' || desc_s[j] == '\n' || desc_s[j] == '\r' || desc_s[j] == '\t')
+          j += 1
+        end
+        if j < desc_s.size && desc_s[j] == '['
+          bracket = j
+          break
+        end
+        search = pos + 2
       end
-      return result unless i < desc_s.size
+      return result if bracket < 0
+      i = bracket
       start = i + 1
       depth = 1
       i += 1
@@ -655,10 +684,10 @@ module Pdf2Text
           # operand : (text) or <hex>
           if (str = operands.last?) && in_text
             current_font = fonts[font_key]?
-            text = decode_string(str, current_font)
+            text, cw = decode_with_widths(str, current_font)
             unless text.empty?
-              w = estimate_width(text, font_size, current_font)
-              words.concat split_into_words(text, tx, ty, font_size, w, page_num, current_font.try(&.name) || "?")
+              w = cw.sum * font_size / 1000.0
+              words.concat split_into_words(text, cw, tx, ty, font_size, page_num, current_font.try(&.name) || "?")
               tx += w
             end
           end
@@ -671,10 +700,10 @@ module Pdf2Text
             elts.each do |elt|
               case elt
               when String
-                text = decode_string(elt, current_font)
+                text, cw = decode_with_widths(elt, current_font)
                 unless text.empty?
-                  w = estimate_width(text, font_size, current_font)
-                  words.concat split_into_words(text, tx, ty, font_size, w, page_num, current_font.try(&.name) || "?")
+                  w = cw.sum * font_size / 1000.0
+                  words.concat split_into_words(text, cw, tx, ty, font_size, page_num, current_font.try(&.name) || "?")
                   tx += w
                 end
               when Float64
@@ -788,6 +817,78 @@ module Pdf2Text
         decode_paren_string(s)
       else
         ""
+      end
+    end
+
+    # Décode une string PDF en renvoyant À LA FOIS le texte Unicode
+    # ET la largeur de chaque caractère (en unités 1000-em), mesurée
+    # depuis le CID BRUT du flux via `/W` — sans le détour
+    # Unicode→CID inverse de `width_of`, qui sous-estime les fontes
+    # dont plusieurs CID partagent un Unicode (cas typique du gras :
+    # `width_of` retombait sur la médiane pour des glyphes pourtant
+    # listés dans `/W`, mesurant les mots gras ~25 % trop étroits ⇒
+    # faux positifs `huge_gap` dans pdf-audit).
+    #
+    # Le tableau de largeurs est PARALLÈLE aux caractères du texte.
+    # Quand un CID se décode en plusieurs caractères (ligature
+    # `ﬁ`→`fi`), la largeur du CID est portée par le 1ᵉʳ caractère
+    # et 0 par les suivants — la somme par mot reste exacte.
+    private def decode_with_widths(s : String, font : FontInfo?) : Tuple(String, Array(Float64))
+      widths = [] of Float64
+      if s.starts_with?('<') && s.ends_with?('>')
+        text = decode_hex_with_widths(s, font, widths)
+        {text, widths}
+      elsif s.starts_with?('(') && s.ends_with?(')')
+        # Fonte simple (mono-octet) : on décode le texte puis on
+        # mesure chaque caractère via le fallback de la fonte
+        # (cid_widths vide ⇒ avg_advance). Suffisant pour les
+        # fontes de base ; les CIDFonts passent par le chemin hex.
+        text = decode_paren_string(s)
+        fb = font.try(&.avg_advance) || 500.0
+        text.each_char { widths << fb }
+        {text, widths}
+      else
+        {"", widths}
+      end
+    end
+
+    # Comme `decode_hex_string`, mais remplit aussi `widths` avec la
+    # largeur (1000-em) de chaque caractère émis, mesurée par CID.
+    private def decode_hex_with_widths(s : String, font : FontInfo?, widths : Array(Float64)) : String
+      hex = s[1..-2].gsub(/\s+/, "")
+      hex += "0" if hex.size.odd?
+      bytes = [] of UInt8
+      i = 0
+      while i + 2 <= hex.size
+        bytes << hex[i, 2].to_u8(16)
+        i += 2
+      end
+
+      byte_width = font.try(&.byte_width) || 1
+      cid_map = font.try(&.cid_map)
+
+      String.build do |io|
+        idx = 0
+        while idx < bytes.size
+          cid = if byte_width == 2 && idx + 1 < bytes.size
+                  c = (bytes[idx].to_u16 << 8) | bytes[idx + 1].to_u16
+                  idx += 2
+                  c
+                else
+                  c = bytes[idx].to_u16
+                  idx += 1
+                  c
+                end
+          uni = (cid_map && cid_map[cid]?) || (cid < 0x10000 ? cid.chr.to_s : "")
+          w = font.try(&.cid_width(cid)) || 0.0
+          # 1ʳᵉ position reçoit la largeur du CID, les suivantes 0.
+          first = true
+          uni.each_char do |ch|
+            io << ch
+            widths << (first ? w : 0.0)
+            first = false
+          end
+        end
       end
     end
 
@@ -936,37 +1037,61 @@ module Pdf2Text
     # space, and produce a `Word` for each non-empty fragment.
     # Each word's bbox is approximated from the position and an
     # estimated width.
-    private def split_into_words(text : String, x : Float64, y : Float64, font_size : Float64, total_width : Float64, page_num : Int32, font_name : String) : Array(Word)
+    # Découpe un run de texte en mots (séparés par l'espace ASCII)
+    # avec des bbox EXACTES, en s'appuyant sur la largeur réelle de
+    # chaque caractère (`char_widths`, en unités 1000-em, parallèle
+    # aux caractères de `text`). Chaque mot avance le curseur de la
+    # somme des largeurs de ses caractères (× font_size / 1000).
+    #
+    # Avant v0.5.0, on répartissait `total_width / text.size`
+    # uniformément par caractère — approximation grossière pour une
+    # fonte proportionnelle, et a fortiori fausse quand la largeur
+    # totale elle-même était mal estimée (gras). Désormais chaque
+    # glyphe a sa vraie chasse.
+    private def split_into_words(text : String, char_widths : Array(Float64), x : Float64, y : Float64, font_size : Float64, page_num : Int32, font_name : String) : Array(Word)
       result = [] of Word
       return result if text.strip.empty?
 
-      # Per-char estimated advance (we don't have per-glyph widths
-      # in this minimal implementation).
-      char_w = text.size > 0 ? total_width / text.size : 0.0
-
-      parts = text.split(' ')
+      scale = font_size / 1000.0
+      chars = text.chars
       cursor = x
-      parts.each_with_index do |part, idx|
-        if idx > 0
-          cursor += char_w # account for the space
+      word_start_x = x
+      buf = String::Builder.new
+      buf_empty = true
+
+      flush = -> {
+        unless buf_empty
+          part = buf.to_s
+          unless part.empty?
+            result << Word.new(
+              text: part,
+              bbox: Bbox.new(x_min: word_start_x, y_min: y, x_max: cursor, y_max: y + font_size),
+              page: page_num,
+              font_size: font_size,
+              font_name: font_name,
+            )
+          end
         end
-        next if part.empty?
-        part_w = char_w * part.size
-        bbox = Bbox.new(
-          x_min: cursor,
-          y_min: y,
-          x_max: cursor + part_w,
-          y_max: y + font_size,
-        )
-        result << Word.new(
-          text: part,
-          bbox: bbox,
-          page: page_num,
-          font_size: font_size,
-          font_name: font_name,
-        )
-        cursor += part_w
+        buf = String::Builder.new
+        buf_empty = true
+      }
+
+      chars.each_with_index do |ch, i|
+        w = (char_widths[i]? || 0.0) * scale
+        if ch == ' '
+          flush.call
+          cursor += w
+          word_start_x = cursor
+        else
+          if buf_empty
+            word_start_x = cursor
+            buf_empty = false
+          end
+          buf << ch
+          cursor += w
+        end
       end
+      flush.call
       result
     end
   end
