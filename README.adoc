@@ -1,0 +1,39 @@
+= pdf2text — Pure-Crystal PDF text extractor
+
+See link:README.fr.adoc[the French README] for full documentation.
+
+Pure Crystal library and CLI for reading PDFs, walking the object
+tree and extracting positioned text (page, font, bounding box).
+Zero external dependencies — Crystal stdlib only.
+
+**State : v0.1.0-alpha.** Page tree + dimensions reliably
+extracted. Text extraction from content streams is a draft —
+0 words for most PDFs in this release. See ROADMAP in the
+French README for the planned v0.2.0+ targets (WinAnsi decoding,
+ToUnicode CMap parsing, precise bbox via /Widths metrics,
+AES-128/256 decryption).
+
+== Quick start
+
+[source,crystal]
+----
+require "pdf2text"
+
+extract = Pdf2Text::Extractor.extract("doc.pdf")
+puts "Pages : #{extract.pages.size}"
+extract.pages.each do |page|
+  puts "  #{page.number}: #{page.width} x #{page.height}"
+end
+----
+
+[source,bash]
+----
+pdf2text doc.pdf            # summary
+pdf2text doc.pdf --json     # JSON output
+pdf2text doc.pdf --pages    # page count only
+pdf2text --help
+----
+
+== License
+
+MIT.

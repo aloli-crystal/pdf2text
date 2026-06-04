@@ -1,0 +1,18 @@
+= Changelog
+:toc: left
+:toc-title: Versions
+
+Toutes les modifications notables de `aloli-crystal/pdf2text`
+sont documentées ici. Le format suit
+https://keepachangelog.com/1.1.0/[Keep a Changelog] et le
+versioning suit https://semver.org/[SemVer]
+(3 chiffres pour création, 4 pour portage de gem Ruby).
+
+== v0.1.0 — 2026-06-04
+
+=== Ajouté
+
+* Création du shard à partir du template
+  https://github.com/aloli-crystal/shard-template[aloli-crystal/shard-template].
+* Module `Pdf2Text` avec `VERSION` lue au compile-time depuis
+  `shard.yml`.

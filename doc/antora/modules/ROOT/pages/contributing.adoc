@@ -1,0 +1,48 @@
+= Contribuer
+
+== Branches
+
+* *Branche par défaut* : `production` (jamais `main` ni `master`)
+* *Convention* : un commit qui passe les specs = candidat à
+  bumper la version
+
+== Conventions
+
+Voir les notes mémoire ALOLI :
+
+* `feedback_shard_version_macro.md` — `VERSION` lue depuis
+  `shard.yml` au compile-time
+* `feedback_cli_help_subcommand.md` — `<cli> help [<sub>]`
+* `feedback_cli_short_flags.md` — un short pour chaque flag long
+* `feedback_versioning_shards.md` — 3-digit (création) ou 4-digit
+  (portage de gem Ruby)
+* `feedback_default_branch_production.md` — production, pas main
+* `feedback_commit_messages_french.md` — messages de commit en
+  français
+* `feedback_readme_adoc_bilingue.md` — `README.adoc` (EN) +
+  `README.fr.adoc` (FR), idem pour `CHANGELOG`
+
+== Processus
+
+[source,shell]
+----
+# Avant chaque commit
+crystal tool format src/ spec/
+crystal spec
+bin/ameba
+
+# Bump (3e ou 4e position selon convention création/portage)
+$EDITOR shard.yml          # version: 0.1.X+1
+$EDITOR CHANGELOG.adoc     # entrée === Added/Fixed/Changed
+
+# Commit + tag
+git add -A
+git commit -m "Version 0.1.X+1 : <résumé>"
+git tag v0.1.X+1
+git push origin production
+git push origin v0.1.X+1
+----
+
+NOTE : la constante `Pdf2Text::VERSION` se met à jour
+*automatiquement* depuis `shard.yml` (macro `read_file`). Pas
+besoin de bumper deux endroits.

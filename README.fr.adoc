@@ -1,0 +1,56 @@
+= aloli-crystal/pdf2text
+:toc: left
+:toc-title: Sommaire
+
+Outil daudit visuel pour PDFs : extraction bbox, diff de baselines, détection danomalies typographiques, annotation des résultats.
+
+== Installation
+
+[source,yaml]
+----
+dependencies:
+  pdf2text:
+    github: aloli-crystal/pdf2text
+    version: "~> 0.1"
+----
+
+== Démarrage rapide
+
+[source,crystal]
+----
+require "pdf2text"
+
+# … exemple à compléter …
+----
+
+== Statut
+
+* *Version* : voir https://github.com/aloli-crystal/pdf2text/releases[releases GitHub]
+* *Branche par défaut* : `production`
+* *Licence* : MIT (voir `LICENSE`)
+
+== Documentation
+
+* https://aloli-crystal.github.io/pdf2text/[Site documentaire Antora] (à venir)
+* `CHANGELOG.fr.adoc` — historique des versions
+* `CHANGELOG.adoc` — version anglaise
+
+== Conventions ALOLI
+
+Ce shard suit les conventions de l'écosystème
+https://github.com/aloli-crystal[aloli-crystal/*] :
+
+* Constante `VERSION` lue au compile-time depuis `shard.yml` —
+  pas de désynchro possible.
+* CLI : `pdf2text help [<sub>]` (équivalent UX standard de
+  `--help` + focus par sous-commande).
+* Branche par défaut `production` (pas `main`).
+* Versioning SemVer 3-chiffres pour création, 4-chiffres pour
+  portage de gem Ruby.
+
+Pour démarrer un nouveau shard avec ces conventions :
+https://github.com/aloli-crystal/shard-template[aloli-crystal/shard-template].
+
+== Licence
+
+MIT — voir `LICENSE`.

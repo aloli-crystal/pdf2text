@@ -1,0 +1,10 @@
+= Historique
+:page-aliases: CHANGELOG.adoc
+
+include::partial$../../../../CHANGELOG.adoc[tag=!header]
+
+[NOTE]
+====
+Inclut le `CHANGELOG.adoc` à la racine du repo. Voir aussi la
+version française : `CHANGELOG.fr.adoc`.
+====

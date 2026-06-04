@@ -1,0 +1,22 @@
+= pdf2text
+:description: Outil daudit visuel pour PDFs : extraction bbox, diff de baselines, détection danomalies typographiques, annotation des résultats.
+
+Outil daudit visuel pour PDFs : extraction bbox, diff de baselines, détection danomalies typographiques, annotation des résultats.
+
+== Statut
+
+* *Version* : {page-component-display-version}
+* *Repo* : https://github.com/aloli-crystal/pdf2text[aloli-crystal/pdf2text]
+* *Licence* : MIT
+
+== Quickstart
+
+[source,crystal]
+----
+require "pdf2text"
+
+# … exemple d'utilisation …
+----
+
+Pour les détails, voir xref:usage.adoc[Utilisation] ou
+xref:api.adoc[API].

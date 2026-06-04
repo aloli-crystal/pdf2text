@@ -1,0 +1,35 @@
+name: pdf2text
+version: 0.1.0
+
+description: |
+  Pure-Crystal PDF text extractor. Reads a PDF file, walks its
+  object tree, decodes content streams (FlateDecode for now) and
+  returns positioned text (page index, font name + size,
+  bounding box in PDF points).
+  v0.1.0 targets PDFs produced by aloli-crystal/pdf : Type1 with
+  WinAnsi encoding, TTF with CIDFont Type0 + Identity-H + ToUnicode
+  CMap. External PDFs (PDF/A, encrypted, exotic encodings) may not
+  be supported yet — see ROADMAP.
+
+authors:
+  - Philippe Nénert <philippe@aloli.fr>
+
+crystal: ">= 1.10.0"
+
+license: MIT
+
+# No runtime dependencies. We rely only on Crystal stdlib :
+# - `compress/zlib` for FlateDecode content streams
+# - File I/O, regex, strings
+# This keeps `pdf2text` self-contained and reusable by any project
+# that needs to introspect PDFs.
+dependencies:
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: "~> 1.6"
+
+targets:
+  pdf2text:
+    main: src/cli.cr

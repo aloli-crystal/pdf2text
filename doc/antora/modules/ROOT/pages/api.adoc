@@ -1,0 +1,19 @@
+= API
+
+[NOTE]
+====
+La documentation API est générée par `crystal docs` et publiée à
+côté de cette page Antora. À écrire au fur et à mesure du
+développement.
+====
+
+== Module principal
+
+* `Pdf2Text::VERSION` — version du shard, lue au compile-time
+  depuis `shard.yml` (convention ALOLI, cf.
+  https://github.com/aloli-crystal/shard-template[note dans le
+  template]).
+
+== Classes / modules publics
+
+À documenter ici quand l'API se stabilise.

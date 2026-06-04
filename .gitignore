@@ -1,0 +1,6 @@
+/bin/pdf2text
+/bin/pdf2text.dwarf
+/bin/ameba
+/bin/ameba.cr
+/lib/
+*.dwarf

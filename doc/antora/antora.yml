@@ -1,0 +1,19 @@
+# Composant Antora pour la documentation du shard.
+#
+# Ce fichier déclare le shard comme un *composant* documentaire
+# Antora. Il peut ensuite être agrégé dans le site documentaire
+# central (cf. aloli-crystal/docs) via un `playbook.yml` qui
+# référence ce repo.
+#
+# Convention ALOLI :
+# * `name` = nom kebab-case du shard (= dossier du repo)
+# * `version` = "main" pour suivre la branche de production
+# * `nav` pointe sur le fichier de navigation latérale
+
+name: pdf2text
+title: pdf2text
+version: ~  # null = composant unversioned, suit toujours la prod
+display_version: __SHARD_VERSION__
+start_page: ROOT:index.adoc
+nav:
+  - modules/ROOT/nav.adoc

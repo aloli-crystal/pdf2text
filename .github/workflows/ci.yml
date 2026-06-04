@@ -1,0 +1,67 @@
+name: CI
+on:
+  push:
+    branches: [production]
+  pull_request:
+    branches: [production]
+
+jobs:
+  # NB : sur le repo `shard-template` lui-même, ces jobs sont
+  # désactivés — les sources contiennent encore les placeholders
+  # `pdf2text` / `Pdf2Text` qui sont des mots réservés Crystal et
+  # empêchent toute compilation. La validation du template passe par
+  # le workflow `template-self-test.yml` qui exécute `bin/init` puis
+  # rejoue ces mêmes étapes sur le résultat. `bin/init` supprime ce
+  # workflow au bootstrap d'un nouveau shard.
+  spec:
+    if: github.event.repository.name != 'shard-template'
+    runs-on: ubuntu-latest
+    container:
+      image: crystallang/crystal:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache shards
+        uses: actions/cache@v4
+        with:
+          path: lib
+          key: ${{ runner.os }}-shards-${{ hashFiles('shard.lock', 'shard.yml') }}
+          restore-keys: ${{ runner.os }}-shards-
+
+      - name: Install dependencies
+        run: shards install
+
+      - name: Format check
+        run: crystal tool format --check src/ spec/
+
+      - name: Run specs
+        run: crystal spec --error-on-warnings
+
+      - name: Run ameba
+        run: ./bin/ameba
+
+  # Vérifie que la VERSION lue au compile-time est cohérente avec
+  # shard.yml. La règle existe via le spec, mais on la double ici
+  # pour échouer tôt si jamais le macro `read_file` régresse.
+  version-coherence:
+    if: github.event.repository.name != 'shard-template'
+    runs-on: ubuntu-latest
+    container:
+      image: crystallang/crystal:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: shards install
+      - name: Compile-time VERSION matches shard.yml
+        # Les tokens `pdf2text` et `Pdf2Text` sont substitués par
+        # `bin/init` dans tous les fichiers (ce workflow inclus) au
+        # bootstrap. Sur le repo `shard-template` lui-même ce job ne
+        # tourne pas (cf. `if:` au niveau du job).
+        run: |
+          YML_VERSION=$(grep '^version:' shard.yml | awk '{print $2}')
+          BIN_VERSION=$(crystal eval 'require "./src/pdf2text"; puts Pdf2Text::VERSION')
+          if [ "$YML_VERSION" != "$BIN_VERSION" ]; then
+            echo "VERSION drift: shard.yml=$YML_VERSION  module=$BIN_VERSION"
+            exit 1
+          fi
+          echo "VERSION OK: $YML_VERSION"

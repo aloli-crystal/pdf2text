@@ -1,0 +1,30 @@
+= Installation
+
+== Comme dépendance d'un autre shard
+
+Ajoutez à votre `shard.yml` :
+
+[source,yaml]
+----
+dependencies:
+  pdf2text:
+    github: aloli-crystal/pdf2text
+    version: "~> 0.1"
+----
+
+Puis :
+
+[source,shell]
+----
+shards install
+----
+
+== En local pour développer
+
+[source,shell]
+----
+git clone git@github.com:aloli-crystal/pdf2text.git
+cd pdf2text
+shards install
+crystal spec       # lancer les tests
+----
