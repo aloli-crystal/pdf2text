@@ -8,6 +8,29 @@ https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer]
 (3-digit for creations, 4-digit for ports of Ruby gems).
 
+== v0.6.0 — 2026-06-05 — `pdftohtml` : positioned HTML rendering
+
+=== Added
+
+* **`Pdf2Text::Html`** (`src/pdf2text/html.cr`) — renders an `Extract`
+  to a self-contained HTML document, the equivalent of poppler's
+  `pdftohtml` : one `<div>` per page sized to the MediaBox, one
+  absolutely-positioned `<span>` per word (PDF bottom-left origin →
+  HTML top-left), preserved font size and a font-family heuristic.
+  Text is escaped (`HTML.escape`).
+* **`pdftohtml` binary** (`src/bin/pdftohtml.cr`) — new shard target,
+  ALOLI CLI conventions. `pdftohtml <doc.pdf> [<out.html>]` with
+  `-o/-f/-l/-s(stdout)/-t(title)/-p`. Pure reading.
+
+=== Fixed
+
+* Stale notes corrected : the CLI and module doc still described text
+  extraction as a "preliminary" sketch returning "0 words" for most
+  PDFs. That has been false since v0.2.0+ — Type1/WinAnsi and CID
+  Type0/Identity-H/ToUnicode extraction is reliable (verified : 8175
+  words from a 21-page PDF). (The EN changelog also lacked the
+  v0.2.0–v0.5.0 entries kept in CHANGELOG.fr.adoc.)
+
 == v0.1.0 — 2026-06-04
 
 === Added

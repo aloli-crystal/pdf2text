@@ -19,11 +19,11 @@ usage = <<-USAGE
     -V, --version        Affiche la version
     -h, --help           Affiche cette aide
 
-  Périmètre v#{Pdf2Text::VERSION} (alpha) — voir README pour la
-  roadmap complète. Cible les PDFs produits par
-  aloli-crystal/pdf (Type1 WinAnsi, TTF CIDFont/Identity-H).
-  L'extraction texte est une ébauche : structure de pages et
-  dimensions OK, parsing des content streams en chantier.
+  Extrait le texte positionné (mot, boîte englobante, fonte,
+  taille) d'un PDF. Gère Type1/WinAnsi et TTF CIDFont Type0 /
+  Identity-H / ToUnicode CMap (PDFs produits par aloli-crystal/pdf
+  et asciidoctor-pdf). PDFs externes/chiffrés ou encodages exotiques
+  pas encore garantis — voir README. Conversion HTML : `pdftohtml`.
   USAGE
 
 json_out = false
@@ -92,14 +92,12 @@ end
 puts "Fichier   : #{extract.source}"
 puts "Pages     : #{extract.pages.size}"
 puts "Total mots: #{extract.total_words}"
-extract.pages.each do |p|
-  printf("  page %2d : %.1f × %.1f pt — %d mots\n", p.number, p.width, p.height, p.words.size)
+extract.pages.each do |page|
+  printf("  page %2d : %.1f × %.1f pt — %d mots\n", page.number, page.width, page.height, page.words.size)
 end
 if extract.total_words == 0 && !extract.pages.empty?
   puts ""
-  puts "Note : aucun mot extrait. C'est attendu en v#{Pdf2Text::VERSION}"
-  puts "      pour la plupart des PDFs — le parsing des content"
-  puts "      streams est encore une ébauche. Voir le README pour"
-  puts "      la roadmap v0.2.0+ (décodage WinAnsi, ToUnicode CMap,"
-  puts "      bbox précise via font /Widths)."
+  puts "Note : aucun mot extrait. La structure est lue, mais le texte"
+  puts "      non : encodage de fonte non géré, content streams sous"
+  puts "      filtre non-Flate, ou PDF chiffré. Voir le README."
 end

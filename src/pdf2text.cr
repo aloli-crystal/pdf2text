@@ -1,6 +1,7 @@
 require "./pdf2text/version"
 require "./pdf2text/bbox"
 require "./pdf2text/extractor"
+require "./pdf2text/html"
 
 # `pdf2text` — Pure-Crystal PDF text extractor.
 #
@@ -23,14 +24,13 @@ require "./pdf2text/extractor"
 # end
 # ```
 #
-# **Scope v0.1.0 (alpha).** Targets PDFs produced by
-# `aloli-crystal/pdf` : Type1 with WinAnsi encoding, TTF with
-# CIDFont Type0 + Identity-H + ToUnicode CMap. Structure (page
-# tree, MediaBox, font references) is reliably extracted. Text
-# extraction from content streams is preliminary — many PDFs
-# return 0 words for now. See the project README for the full
-# roadmap (v0.2.0+ targets full WinAnsi decoding, ToUnicode CMap
-# parsing, precise bbox via /Widths font metrics, AES-128/256
-# decryption).
+# **Scope.** Targets PDFs produced by `aloli-crystal/pdf` and
+# asciidoctor-pdf : Type1 with WinAnsi encoding and TTF CIDFont
+# Type0 + Identity-H + ToUnicode CMap. Content streams under
+# FlateDecode are decoded; positioned text (word, bbox, font,
+# size) is extracted reliably for these. HTML rendering is
+# available via `Pdf2Text::Html` (the `pdftohtml` binary). Not yet
+# guaranteed : external/encrypted PDFs, object/xref streams
+# (PDF 1.5+), exotic encodings — see the README roadmap.
 module Pdf2Text
 end

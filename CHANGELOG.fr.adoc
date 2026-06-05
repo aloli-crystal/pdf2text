@@ -1,3 +1,25 @@
+== v0.6.0 — 2026-06-05 — `pdftohtml` : rendu HTML positionné
+
+=== Ajouté
+
+* **`Pdf2Text::Html`** (`src/pdf2text/html.cr`) — rend un `Extract` en
+  HTML autonome, équivalent de `pdftohtml` de poppler : un `<div>` par
+  page aux dimensions du MediaBox, un `<span>` positionné en absolu par
+  mot (conversion origine PDF bas-gauche → HTML haut-gauche), taille de
+  police préservée et heuristique de famille de police. Texte échappé
+  (`HTML.escape`).
+* **Binaire `pdftohtml`** (`src/bin/pdftohtml.cr`) — nouvelle cible du
+  shard, conventions CLI ALOLI. `pdftohtml <doc.pdf> [<sortie.html>]`
+  avec `-o/-f/-l/-s(stdout)/-t(titre)/-p`. Lecture pure.
+
+=== Corrigé
+
+* Notes obsolètes corrigées : la CLI et la doc du module décrivaient
+  encore l'extraction texte comme une « ébauche » renvoyant « aucun
+  mot » pour la plupart des PDFs. C'est faux depuis v0.2.0+ —
+  l'extraction Type1/WinAnsi et CID Type0/Identity-H/ToUnicode est
+  fiable (vérifié : 8175 mots sur un PDF de 21 pages).
+
 == v0.5.0 — 2026-06-04
 
 === Corrigé / Ajouté
