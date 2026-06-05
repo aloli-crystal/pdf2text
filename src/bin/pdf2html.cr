@@ -1,8 +1,8 @@
 require "option_parser"
 require "../pdf2text"
 
-# pdftohtml — convertit un PDF en HTML positionné (port Crystal de
-# l'utilitaire poppler-utils du même nom).
+# pdf2html — convertit un PDF en HTML positionné (port Crystal de
+# l'utilitaire `pdftohtml` de poppler-utils).
 #
 # S'appuie sur l'extracteur de texte positionné de `pdf2text` : chaque
 # mot devient un `<span>` placé en absolu, reproduisant la mise en page
@@ -13,9 +13,9 @@ require "../pdf2text"
 # `-h` / `--help` global ; tout flag long a un short.
 
 usage = <<-USAGE
-  Usage : pdftohtml <fichier.pdf> [<sortie.html>] [options]
-          pdftohtml help [<sous-commande>]
-          pdftohtml --version | -V
+  Usage : pdf2html <fichier.pdf> [<sortie.html>] [options]
+          pdf2html help [<sous-commande>]
+          pdf2html --version | -V
 
   Options :
     -o, --output FICHIER  Fichier HTML de sortie
@@ -48,7 +48,7 @@ parser = OptionParser.new do |op|
   op.on("-t TITRE", "--title TITRE", "Document title") { |v| title = v }
   op.on("-p MDP", "--password MDP", "Document password") { |v| password = v }
   op.on("-V", "--version", "Show version") do
-    puts "pdftohtml #{Pdf2Text::VERSION}"
+    puts "pdf2html #{Pdf2Text::VERSION}"
     exit 0
   end
   op.on("-h", "--help", "Show this help") do

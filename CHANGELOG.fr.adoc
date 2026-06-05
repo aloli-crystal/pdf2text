@@ -1,3 +1,13 @@
+== v0.6.1 — 2026-06-06 — binaire renommé `pdftohtml` → `pdf2html`
+
+=== Modifié
+
+* **Binaire renommé `pdftohtml` → `pdf2html`** (`src/bin/pdf2html.cr`,
+  cible `pdf2html` du shard). Évite la collision de nom avec le
+  `pdftohtml` de poppler-utils dans le `PATH` et s'aligne sur le
+  binaire frère `pdf2text`. Le moteur HTML (`Pdf2Text::Html`) et le
+  comportement de la CLI sont inchangés.
+
 == v0.6.0 — 2026-06-05 — `pdftohtml` : rendu HTML positionné
 
 === Ajouté

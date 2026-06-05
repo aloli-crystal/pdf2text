@@ -1,8 +1,8 @@
 require "html"
 
 module Pdf2Text
-  # Rendu HTML d'un `Extract` — le moteur de l'utilitaire `pdftohtml`
-  # de poppler-utils.
+  # Rendu HTML d'un `Extract` — le moteur de l'utilitaire `pdf2html`
+  # (équivalent du `pdftohtml` de poppler-utils).
   #
   # Chaque page devient un `<div class="page">` aux dimensions du
   # MediaBox, dans lequel chaque mot est un `<span>` positionné en

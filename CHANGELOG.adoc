@@ -8,6 +8,16 @@ https://keepachangelog.com/1.1.0/[Keep a Changelog] and
 versioning follows https://semver.org/[SemVer]
 (3-digit for creations, 4-digit for ports of Ruby gems).
 
+== v0.6.1 — 2026-06-06 — binary renamed `pdftohtml` → `pdf2html`
+
+=== Changed
+
+* **Binary renamed `pdftohtml` → `pdf2html`** (`src/bin/pdf2html.cr`,
+  `pdf2html` shard target). Avoids the name clash with poppler-utils'
+  own `pdftohtml` on `PATH` and aligns with the sibling `pdf2text`
+  binary. The HTML engine (`Pdf2Text::Html`) and the CLI behaviour are
+  unchanged.
+
 == v0.6.0 — 2026-06-05 — `pdftohtml` : positioned HTML rendering
 
 === Added

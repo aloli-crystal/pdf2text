@@ -29,7 +29,7 @@ require "./pdf2text/html"
 # Type0 + Identity-H + ToUnicode CMap. Content streams under
 # FlateDecode are decoded; positioned text (word, bbox, font,
 # size) is extracted reliably for these. HTML rendering is
-# available via `Pdf2Text::Html` (the `pdftohtml` binary). Not yet
+# available via `Pdf2Text::Html` (the `pdf2html` binary). Not yet
 # guaranteed : external/encrypted PDFs, object/xref streams
 # (PDF 1.5+), exotic encodings — see the README roadmap.
 module Pdf2Text

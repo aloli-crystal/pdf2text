@@ -23,7 +23,7 @@ usage = <<-USAGE
   taille) d'un PDF. Gère Type1/WinAnsi et TTF CIDFont Type0 /
   Identity-H / ToUnicode CMap (PDFs produits par aloli-crystal/pdf
   et asciidoctor-pdf). PDFs externes/chiffrés ou encodages exotiques
-  pas encore garantis — voir README. Conversion HTML : `pdftohtml`.
+  pas encore garantis — voir README. Conversion HTML : `pdf2html`.
   USAGE
 
 json_out = false

@@ -1,5 +1,5 @@
 name: pdf2text
-version: 0.6.0
+version: 0.6.1
 
 description: |
   Pure-Crystal PDF text extractor. Reads a PDF file, walks its
@@ -33,5 +33,5 @@ development_dependencies:
 targets:
   pdf2text:
     main: src/cli.cr
-  pdftohtml:
-    main: src/bin/pdftohtml.cr
+  pdf2html:
+    main: src/bin/pdf2html.cr
