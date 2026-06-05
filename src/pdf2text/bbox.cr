@@ -87,7 +87,7 @@ module Pdf2Text
     source : String,
     pages : Array(Page) do
     def total_words : Int32
-      pages.sum { |p| p.words.size }
+      pages.sum(&.words.size)
     end
 
     def to_h
