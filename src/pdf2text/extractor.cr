@@ -100,10 +100,10 @@ module Pdf2Text
       header = String.new(raw[header_start..(marker - 1)]).strip
       # Expected pattern: "<obj_num> <gen>"
       parts = header.split(' ', remove_empty: true)
-      return nil unless parts.size >= 2 && (obj_num = parts[0].to_i?) && parts[1].to_i?
+      return unless parts.size >= 2 && (obj_num = parts[0].to_i?) && parts[1].to_i?
       body_start = skip_obj_ws(raw, marker + obj_pat.size + 1)
       endobj_at = find_pattern(raw, endobj_pat, body_start)
-      return nil unless endobj_at
+      return unless endobj_at
       {obj_num, raw[body_start..(endobj_at - 1)], endobj_at + endobj_pat.size}
     end
 
@@ -410,7 +410,7 @@ module Pdf2Text
     # Retourne `nil` si l'objet est absent.
     private def parse_font(objects : ObjectMap, key : String, font_ref : Int32) : FontInfo?
       font_obj = objects[font_ref]?
-      return nil unless font_obj
+      return unless font_obj
       font_s = String.new(font_obj)
       # `/BaseFont /XXX` : capturer jusqu'au prochain `/`, `>`,
       # ou espace (le `\S+` était trop gourmand et incluait
@@ -1097,7 +1097,6 @@ module Pdf2Text
       when '('  then '('
       when ')'  then ')'
       when '\\' then '\\'
-      else           nil
       end
     end
 

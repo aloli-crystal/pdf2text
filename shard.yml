@@ -1,5 +1,5 @@
 name: pdf2text
-version: 0.6.1
+version: 0.6.2
 
 description: |
   Pure-Crystal PDF text extractor. Reads a PDF file, walks its
@@ -28,7 +28,7 @@ dependencies:
 development_dependencies:
   ameba:
     github: crystal-ameba/ameba
-    version: "~> 1.6"
+    version: "~> 1.7"
 
 targets:
   pdf2text:

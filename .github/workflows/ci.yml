@@ -17,7 +17,7 @@ jobs:
     if: github.event.repository.name != 'shard-template'
     runs-on: ubuntu-latest
     container:
-      image: crystallang/crystal:1.19.1
+      image: crystallang/crystal:1.22.0
     steps:
       - uses: actions/checkout@v4
 
@@ -38,7 +38,7 @@ jobs:
         run: crystal spec --error-on-warnings
 
       - name: Run ameba
-        run: ./bin/ameba
+        run: crystal run lib/ameba/bin/ameba.cr --
 
   # Vérifie que la VERSION lue au compile-time est cohérente avec
   # shard.yml. La règle existe via le spec, mais on la double ici
@@ -47,7 +47,7 @@ jobs:
     if: github.event.repository.name != 'shard-template'
     runs-on: ubuntu-latest
     container:
-      image: crystallang/crystal:1.19.1
+      image: crystallang/crystal:1.22.0
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies

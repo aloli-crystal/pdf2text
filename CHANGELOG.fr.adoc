@@ -1,3 +1,9 @@
+== v0.6.2 — 2026-10-16
+
+=== Modifié
+
+* ameba 1.7 et Crystal 1.22.0 en CI ; nouvelles règles appliquées, aucun changement de comportement.
+
 == v0.6.1 — 2026-06-06 — binaire renommé `pdftohtml` → `pdf2html`
 
 === Modifié

@@ -37,7 +37,7 @@ describe "pdf2text help" do
 
   it "accepte aussi `-h` et `--help` comme alias positionnels" do
     pending! "binaire CLI absent" unless File.exists?(cli_binary)
-    %w(-h --help).each do |variant|
+    %w[-h --help].each do |variant|
       buf = IO::Memory.new
       status = Process.run(cli_binary, [variant], output: buf, error: buf)
       status.success?.should be_true
